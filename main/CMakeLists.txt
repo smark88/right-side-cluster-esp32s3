@@ -40,8 +40,9 @@ else()
             "ui7/images/c5r_blue_boot.c"
             "demo/dash_demo7.c"
             "canbus/canbus7.c"
-            "canbus/obd_poll.c")
-    set(DASH_INCS "./board7" "./ui7" "./demo" "./canbus" ".")
+            "canbus/obd_poll.c"
+            "odometer/odometer.c")
+    set(DASH_INCS "./board7" "./ui7" "./demo" "./canbus" "./odometer" ".")
 endif()
 
 idf_component_register(

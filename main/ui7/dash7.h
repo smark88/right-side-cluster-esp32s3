@@ -45,6 +45,7 @@ typedef struct {
     float boost_psi;
     char  prndl;        // 'P' 'R' 'N' 'D' 'M', or 0 for none
     int   gear;         // 1..8, -1 reverse, 0 none
+    double odo_miles;   // odometer; double so the tenths survive at 6 digits
 } dash7_values_t;
 
 // Shows the boot logo, then switches to the dash after boot_ms.

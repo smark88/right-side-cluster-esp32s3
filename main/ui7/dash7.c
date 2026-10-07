@@ -16,7 +16,7 @@ LV_IMG_DECLARE(c5r_blue_boot);
 #define C_RED        0xE01010
 #define C_GREEN      0x28FF00
 #define C_TRACK      0x232323
-#define C_MUTED      0x8A9099
+#define C_MUTED      0xB4BAC2   // captions: light enough to read at a glance
 #define C_TILE_LINE  0x2A2E33
 #define C_TILE_BG    0x0B0D0F
 #define C_GEAR_ON_BG 0x1C2026
@@ -57,7 +57,7 @@ typedef struct {
 static tile_t    s_t[T_COUNT];
 static lv_obj_t *s_dash, *s_boot;
 static lv_obj_t *s_rpm_bar, *s_mph, *s_gear;
-static lv_obj_t *s_fuel_bar, *s_fuel_val, *s_eth_val;
+static lv_obj_t *s_fuel_bar, *s_fuel_val, *s_eth_val, *s_odo_val;
 static lv_obj_t *s_sel_box[5], *s_sel_lbl[5];
 static int       s_sel = -2;          // force first paint
 static bool      s_flash_phase;
@@ -114,8 +114,8 @@ static void make_tile(int slot, lv_obj_t *p, const char *cap, int x, int y)
     lv_obj_set_style_outline_opa(t, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(t, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *c = label(t, cap, &lv_font_montserrat_14, C_MUTED);
-    lv_obj_align(c, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_t *c = label(t, cap, &lv_font_montserrat_20, C_MUTED);
+    lv_obj_align(c, LV_ALIGN_TOP_MID, 0, 6);
 
     lv_obj_t *v = label(t, "--", &lv_font_montserrat_44, C_WHITE);
     lv_obj_align(v, LV_ALIGN_BOTTOM_MID, 0, -8);
@@ -216,23 +216,28 @@ static void build_dash(void)
         s_sel_box[i] = b; s_sel_lbl[i] = l;
     }
 
-    lv_obj_t *gc = label(s_dash, "GEAR", &lv_font_montserrat_14, C_MUTED);
-    lv_obj_align(gc, LV_ALIGN_TOP_MID, 0, 250);
+    lv_obj_t *gc = label(s_dash, "GEAR", &lv_font_montserrat_20, C_MUTED);
+    lv_obj_align(gc, LV_ALIGN_TOP_MID, 0, 244);
     // 72px: Montserrat's largest built-in is 48, and the 96px MPH font has no
     // 'R' for reverse, so this one is generated with just digits, R and -.
     s_gear = label(s_dash, "--", &ui_font_gear_72, C_WHITE);
     lv_obj_align(s_gear, LV_ALIGN_TOP_MID, 0, 268);
 
-    // Bottom strip: fuel bar and ethanol. The perf monitor sits bottom right.
-    lv_obj_t *fc = label(s_dash, "FUEL", &lv_font_montserrat_14, C_MUTED);
-    lv_obj_set_pos(fc, 20, 432);
-    s_fuel_bar = fastbar_create(s_dash, 70, 424, 470, 34, 100, C_TRACK, C_GREEN, 6);
+    // Bottom strip: fuel bar, ethanol, odometer. The perf monitor (when
+    // enabled) sits in the bottom-right corner, right of the odometer.
+    lv_obj_t *fc = label(s_dash, "FUEL", &lv_font_montserrat_20, C_MUTED);
+    lv_obj_set_pos(fc, 20, 430);
+    s_fuel_bar = fastbar_create(s_dash, 80, 424, 300, 34, 100, C_TRACK, C_GREEN, 6);
     s_fuel_val = label(s_dash, "--", &lv_font_montserrat_20, C_WHITE);
-    lv_obj_set_pos(s_fuel_val, 550, 430);
-    lv_obj_t *ec = label(s_dash, "ETH", &lv_font_montserrat_14, C_MUTED);
-    lv_obj_set_pos(ec, 612, 432);
+    lv_obj_set_pos(s_fuel_val, 390, 430);
+    lv_obj_t *ec = label(s_dash, "ETH", &lv_font_montserrat_20, C_MUTED);
+    lv_obj_set_pos(ec, 452, 430);
     s_eth_val = label(s_dash, "--", &lv_font_montserrat_20, C_WHITE);
-    lv_obj_set_pos(s_eth_val, 646, 430);
+    lv_obj_set_pos(s_eth_val, 498, 430);
+    lv_obj_t *oc = label(s_dash, "ODO", &lv_font_montserrat_20, C_MUTED);
+    lv_obj_set_pos(oc, 556, 430);
+    s_odo_val = label(s_dash, "--", &lv_font_montserrat_20, C_WHITE);
+    lv_obj_set_pos(s_odo_val, 608, 430);
 
     lv_timer_create(flash_cb, WARN_FLASH_MS, NULL);
     lv_timer_create(shift_cb, SHIFT_BLINK_MS, NULL);
@@ -354,4 +359,10 @@ void dash7_update(const dash7_values_t *v)
     }
     set_num(s_fuel_val, v->fuel_pct, "%.0f%%");
     set_num(s_eth_val, v->ethanol_pct, "%.0f%%");
+
+    // Tenths change every ~6s at 60 mph, so this almost never repaints.
+    char ob[16];
+    if (isnan(v->odo_miles)) snprintf(ob, sizeof ob, "--");
+    else                     snprintf(ob, sizeof ob, "%.1f", v->odo_miles);
+    set_text_if(s_odo_val, ob);
 }

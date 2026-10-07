@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "ch422g.h"
 #include "lcd7.h"
@@ -16,6 +17,7 @@
 #include "dash_demo7.h"
 #include "canbus.h"
 #include "obd_poll.h"
+#include "odometer.h"
 
 static const char *TAG = "MAIN7";
 
@@ -24,6 +26,9 @@ static const char *TAG = "MAIN7";
 #define UPDATE_MS 16
 
 #define BOOT_LOGO_MS 1500
+
+// Below this the speed reading is noise, not motion (same as gauge one).
+#define SPEED_MIN_VALID_MPH 3.0f
 
 static float s_rpm_disp;
 
@@ -62,14 +67,38 @@ static void update_cb(lv_timer_t *t)
 #else
     fill_from_car(&v);
 #endif
+    // Odometer: distance = mph * elapsed hours. Demo speed is not real
+    // driving, so in demo mode it only displays the stored mileage.
+#if !DASH_DEMO_MODE
+    static int64_t last_odo_us;
+    int64_t now_us = esp_timer_get_time();
+    if (last_odo_us != 0 && v.mph >= SPEED_MIN_VALID_MPH)
+        odometer_add_miles(v.mph * (double)(now_us - last_odo_us) / 3600000000.0);
+    last_odo_us = now_us;
+#endif
+    v.odo_miles = odometer_get_miles();
+
     // Smooth the RPM so the bar sweeps rather than steps at OBD's ~8 Hz.
     s_rpm_disp += 0.35f * (v.rpm - s_rpm_disp);
     v.rpm = s_rpm_disp;
     dash7_update(&v);
 }
 
+#if !DASH_DEMO_MODE
+// Writes to NVS once 100 m have built up since the last save.
+static void odo_save_task(void *arg)
+{
+    for (;;) {
+        odometer_periodic_save();
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+}
+#endif
+
 void app_main(void)
 {
+    odometer_init();
+
     // CAN mode drives USB_SEL high, which disconnects native USB; in demo mode
     // leave it low so both USB-C ports still work on the bench.
     ESP_ERROR_CHECK(ch422g_init(!DASH_DEMO_MODE));
@@ -91,5 +120,6 @@ void app_main(void)
     canbus_init();
     xTaskCreatePinnedToCore(canbus_task, "can_rx", 4096, NULL, 10, NULL, 0);
     obd_poll_start();
+    xTaskCreatePinnedToCore(odo_save_task, "odo_save", 4096, NULL, 4, NULL, 0);
 #endif
 }
