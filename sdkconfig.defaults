@@ -12,3 +12,15 @@ CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE=64
 
 CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
 CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ=240
+# ---- 7in combined dash: frame-rate settings --------------------------------
+# -O2 rather than -Og: LVGL's software renderer is the frame budget on the S3.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# 1 ms tick. At 100 Hz every sub-10ms delay rounded to 0 or 10 ms, so frame
+# pacing snapped to 10 ms steps.
+CONFIG_FREERTOS_HZ=1000
+CONFIG_LV_DISP_DEF_REFR_PERIOD=16
+# LVGL's hot draw paths in IRAM instead of executing from flash.
+CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_MONTSERRAT_44=y
