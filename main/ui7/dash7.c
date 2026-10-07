@@ -5,8 +5,10 @@
 #include <string.h>
 #include "lvgl.h"
 #include "esp_timer.h"
+#include "fastbar.h"
 
 LV_FONT_DECLARE(ui_font_rpm_96);   // 96px digits, same as the round gauges
+LV_FONT_DECLARE(ui_font_gear_72);  // 72px digits + R + -, uncompressed
 LV_IMG_DECLARE(c5r_blue_boot);
 
 // ---- theme: identical palette to the round P4 gauges ----------------------
@@ -19,12 +21,28 @@ LV_IMG_DECLARE(c5r_blue_boot);
 #define C_TILE_BG    0x0B0D0F
 #define C_GEAR_ON_BG 0x1C2026
 #define C_WHITE      0xFFFFFF
+#define C_SHIFT      0x38B8FF   // RPM bar at/after the shift point (bright blue)
+
+// Shift light: from DASH7_SHIFT_RPM the bar blinks blue/off at this period.
+// Fast enough to catch in peripheral vision. Each toggle repaints the whole
+// bar, which is affordable at 10 Hz but not every frame.
+#define SHIFT_BLINK_MS  100
+
+static void shift_cb(lv_timer_t *t);
 
 #define TILE_W            210
 #define TILE_H             96
 #define TILE_BORDER_W       2
 #define TILE_WARN_BORDER_W  4
 #define TILE_WARN_RING_W    4
+
+#define BAR_Y              10    // RPM bar: the only tach, so it is tall
+#define BAR_H              54
+#define TILE_Y0           100    // first tile row, clear of the bar's numbers
+
+#define SEL_BOX            36    // PRNDM box size
+#define SEL_GAP             8
+#define SEL_Y             368    // just above the fuel bar at 424
 
 // ---- tiles and their alarm state ------------------------------------------
 enum { T_WATER = 0, T_OIL_TEMP, T_IAT, T_OIL_PSI, T_TRANS, T_BOOST, T_COUNT };
@@ -38,13 +56,13 @@ typedef struct {
 
 static tile_t    s_t[T_COUNT];
 static lv_obj_t *s_dash, *s_boot;
-static lv_obj_t *s_rpm_bar, *s_rpm_val, *s_mph, *s_gear;
+static lv_obj_t *s_rpm_bar, *s_mph, *s_gear;
 static lv_obj_t *s_fuel_bar, *s_fuel_val, *s_eth_val;
 static lv_obj_t *s_sel_box[5], *s_sel_lbl[5];
 static int       s_sel = -2;          // force first paint
 static bool      s_flash_phase;
 static int       s_rpm_last = -1, s_fuel_last = -1;
-static bool      s_rpm_red, s_fuel_red;
+static bool      s_shift, s_shift_on, s_fuel_red;
 
 static const char SEL_LETTERS[] = "PRNDM";
 
@@ -137,22 +155,6 @@ static void flash_cb(lv_timer_t *tm)
     }
 }
 
-static lv_obj_t *make_bar(lv_obj_t *p, int x, int y, int w, int h, int max)
-{
-    lv_obj_t *b = lv_bar_create(p);
-    lv_obj_set_size(b, w, h);
-    lv_obj_set_pos(b, x, y);
-    lv_bar_set_range(b, 0, max);
-    lv_obj_set_style_radius(b, 6, LV_PART_MAIN);
-    lv_obj_set_style_radius(b, 6, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(b, lv_color_hex(C_TRACK), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(b, lv_color_hex(C_GREEN), LV_PART_INDICATOR);
-    // No animation: a tweened bar redraws on every frame of the tween even
-    // when the value has not moved.
-    lv_obj_set_style_anim_time(b, 0, 0);
-    return b;
-}
 
 // ---- screens ---------------------------------------------------------------
 static void build_dash(void)
@@ -164,65 +166,67 @@ static void build_dash(void)
 
     // RPM: a straight bar across the top. A wide arc would sweep a much larger
     // dirty rectangle every frame; a bar only redraws the strip that moved.
-    s_rpm_bar = make_bar(s_dash, 20, 14, 760, 34, DASH7_RPM_MAX);
+    s_rpm_bar = fastbar_create(s_dash, 20, BAR_Y, 760, BAR_H, DASH7_RPM_MAX,
+                               C_TRACK, C_GREEN, 6);
     // Redline marker under the bar.
     lv_obj_t *rl = lv_obj_create(s_dash);
     lv_obj_remove_style_all(rl);
-    int x0 = 20 + 760 * DASH7_REDLINE / DASH7_RPM_MAX;
-    lv_obj_set_pos(rl, x0, 50);
+    int x0 = 20 + 760 * DASH7_SHIFT_RPM / DASH7_RPM_MAX;
+    lv_obj_set_pos(rl, x0, BAR_Y + BAR_H + 2);
     lv_obj_set_size(rl, 780 - x0, 4);
     lv_obj_set_style_bg_color(rl, lv_color_hex(C_RED), 0);
     lv_obj_set_style_bg_opa(rl, LV_OPA_COVER, 0);
-    for (int k = 0; k <= 8; k++) {
+    for (int k = 0; k <= DASH7_RPM_MAX / 1000; k++) {
         char t[4]; snprintf(t, sizeof t, "%d", k);
-        lv_obj_t *l = label(s_dash, t, &lv_font_montserrat_14, C_MUTED);
-        lv_obj_set_pos(l, 20 + 760 * k / 8 - (k == 8 ? 10 : 4), 56);
+        lv_obj_t *l = label(s_dash, t, &lv_font_montserrat_20, C_MUTED);
+        int last = DASH7_RPM_MAX / 1000;
+        lv_obj_set_pos(l, 20 + 760 * k / last - (k == last ? 12 : 5), BAR_Y + BAR_H + 8);
     }
 
     // Tiles.
-    make_tile(T_WATER,    s_dash, "WATER",    20,  90);
-    make_tile(T_OIL_TEMP, s_dash, "OIL TEMP", 20, 198);
-    make_tile(T_IAT,      s_dash, "IAT",      20, 306);
-    make_tile(T_OIL_PSI,  s_dash, "OIL PSI", 570,  90);
-    make_tile(T_TRANS,    s_dash, "TRANS",   570, 198);
-    make_tile(T_BOOST,    s_dash, "BOOST",   570, 306);
+    make_tile(T_WATER,    s_dash, "WATER",    20, TILE_Y0);
+    make_tile(T_OIL_TEMP, s_dash, "OIL TEMP", 20, TILE_Y0 + 108);
+    make_tile(T_IAT,      s_dash, "IAT",      20, TILE_Y0 + 216);
+    make_tile(T_OIL_PSI,  s_dash, "OIL PSI", 570, TILE_Y0);
+    make_tile(T_TRANS,    s_dash, "TRANS",   570, TILE_Y0 + 108);
+    make_tile(T_BOOST,    s_dash, "BOOST",   570, TILE_Y0 + 216);
 
     // Centre column.
-    lv_obj_t *rc = label(s_dash, "RPM", &lv_font_montserrat_14, C_MUTED);
-    lv_obj_align(rc, LV_ALIGN_TOP_MID, -50, 96);
-    s_rpm_val = label(s_dash, "0", &lv_font_montserrat_28, C_WHITE);
-    lv_obj_align(s_rpm_val, LV_ALIGN_TOP_MID, 20, 88);
-
+    // The bar is the only tach -- no digital RPM.
     s_mph = label(s_dash, "0", &ui_font_rpm_96, C_WHITE);
-    lv_obj_align(s_mph, LV_ALIGN_TOP_MID, 0, 128);
+    lv_obj_align(s_mph, LV_ALIGN_TOP_MID, 0, 120);
     lv_obj_t *mc = label(s_dash, "mph", &lv_font_montserrat_20, C_MUTED);
-    lv_obj_align(mc, LV_ALIGN_TOP_MID, 0, 232);
+    lv_obj_align(mc, LV_ALIGN_TOP_MID, 0, 194);
 
     for (int i = 0; i < 5; i++) {
         lv_obj_t *b = lv_obj_create(s_dash);
         lv_obj_remove_style_all(b);
-        lv_obj_set_size(b, 48, 48);
-        lv_obj_set_pos(b, 400 - (5 * 48 + 4 * 10) / 2 + i * 58, 276);
-        lv_obj_set_style_radius(b, 8, 0);
+        // Small, along the bottom of the centre column just above the fuel
+        // bar: the selector is glanced at, not read.
+        lv_obj_set_size(b, SEL_BOX, SEL_BOX);
+        lv_obj_set_pos(b, 400 - (5 * SEL_BOX + 4 * SEL_GAP) / 2 + i * (SEL_BOX + SEL_GAP), SEL_Y);
+        lv_obj_set_style_radius(b, 6, 0);
         lv_obj_set_style_bg_color(b, lv_color_hex(C_TILE_BG), 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
         lv_obj_set_style_border_color(b, lv_color_hex(C_TILE_LINE), 0);
         lv_obj_set_style_border_width(b, TILE_BORDER_W, 0);
         char t[2] = { SEL_LETTERS[i], 0 };
-        lv_obj_t *l = label(b, t, &lv_font_montserrat_28, C_MUTED);
+        lv_obj_t *l = label(b, t, &lv_font_montserrat_20, C_MUTED);
         lv_obj_center(l);
         s_sel_box[i] = b; s_sel_lbl[i] = l;
     }
 
     lv_obj_t *gc = label(s_dash, "GEAR", &lv_font_montserrat_14, C_MUTED);
-    lv_obj_align(gc, LV_ALIGN_TOP_MID, 0, 338);
-    s_gear = label(s_dash, "--", &lv_font_montserrat_44, C_WHITE);
-    lv_obj_align(s_gear, LV_ALIGN_TOP_MID, 0, 356);
+    lv_obj_align(gc, LV_ALIGN_TOP_MID, 0, 250);
+    // 72px: Montserrat's largest built-in is 48, and the 96px MPH font has no
+    // 'R' for reverse, so this one is generated with just digits, R and -.
+    s_gear = label(s_dash, "--", &ui_font_gear_72, C_WHITE);
+    lv_obj_align(s_gear, LV_ALIGN_TOP_MID, 0, 268);
 
     // Bottom strip: fuel bar and ethanol. The perf monitor sits bottom right.
     lv_obj_t *fc = label(s_dash, "FUEL", &lv_font_montserrat_14, C_MUTED);
     lv_obj_set_pos(fc, 20, 432);
-    s_fuel_bar = make_bar(s_dash, 70, 424, 470, 34, 100);
+    s_fuel_bar = fastbar_create(s_dash, 70, 424, 470, 34, 100, C_TRACK, C_GREEN, 6);
     s_fuel_val = label(s_dash, "--", &lv_font_montserrat_20, C_WHITE);
     lv_obj_set_pos(s_fuel_val, 550, 430);
     lv_obj_t *ec = label(s_dash, "ETH", &lv_font_montserrat_14, C_MUTED);
@@ -231,6 +235,16 @@ static void build_dash(void)
     lv_obj_set_pos(s_eth_val, 646, 430);
 
     lv_timer_create(flash_cb, WARN_FLASH_MS, NULL);
+    lv_timer_create(shift_cb, SHIFT_BLINK_MS, NULL);
+}
+
+static void shift_cb(lv_timer_t *t)
+{
+    if (!s_shift) return;
+    s_shift_on = !s_shift_on;
+    // Off is the track colour, so the bar visibly empties -- a real flash
+    // rather than a colour shift.
+    fastbar_set_fill(s_rpm_bar, s_shift_on ? C_SHIFT : C_TRACK);
 }
 
 static void boot_done_cb(lv_timer_t *t)
@@ -281,17 +295,17 @@ void dash7_update(const dash7_values_t *v)
     int q = (rpm / 25) * 25;
     if (q != s_rpm_last) {
         s_rpm_last = q;
-        lv_bar_set_value(s_rpm_bar, q, LV_ANIM_OFF);
-        bool red = q >= DASH7_REDLINE;
-        if (red != s_rpm_red) {
-            s_rpm_red = red;
-            lv_obj_set_style_bg_color(s_rpm_bar, lv_color_hex(red ? C_RED : C_GREEN),
-                                      LV_PART_INDICATOR);
+        fastbar_set_value(s_rpm_bar, q);
+        // Entering the shift band starts the blink lit; leaving it puts the
+        // bar straight back to green. The blink itself runs in shift_cb.
+        bool shift = q >= DASH7_SHIFT_RPM;
+        if (shift != s_shift) {
+            s_shift = shift;
+            s_shift_on = shift;
+            fastbar_set_fill(s_rpm_bar, shift ? C_SHIFT : C_GREEN);
         }
     }
     char b[16];
-    snprintf(b, sizeof b, "%d", (rpm / 50) * 50);
-    set_text_if(s_rpm_val, b);
 
     if (isnan(v->mph)) set_text_if(s_mph, "--");
     else { snprintf(b, sizeof b, "%d", (int)(v->mph + 0.5f)); set_text_if(s_mph, b); }
@@ -331,12 +345,11 @@ void dash7_update(const dash7_values_t *v)
     int fuel = isnan(v->fuel_pct) ? 0 : (int)v->fuel_pct;
     if (fuel != s_fuel_last) {
         s_fuel_last = fuel;
-        lv_bar_set_value(s_fuel_bar, fuel, LV_ANIM_OFF);
+        fastbar_set_value(s_fuel_bar, fuel);
         bool red = fuel < 15;
         if (red != s_fuel_red) {
             s_fuel_red = red;
-            lv_obj_set_style_bg_color(s_fuel_bar, lv_color_hex(red ? C_RED : C_GREEN),
-                                      LV_PART_INDICATOR);
+            fastbar_set_fill(s_fuel_bar, red ? C_RED : C_GREEN);
         }
     }
     set_num(s_fuel_val, v->fuel_pct, "%.0f%%");

@@ -24,3 +24,6 @@ CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
 CONFIG_LV_FONT_MONTSERRAT_44=y
+# ui_font_rpm_96 (shared with the round gauges) is RLE-compressed; without
+# this LVGL silently draws nothing for it -- the MPH number was invisible.
+CONFIG_LV_USE_FONT_COMPRESSED=y
