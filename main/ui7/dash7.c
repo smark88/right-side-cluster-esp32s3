@@ -56,7 +56,8 @@ typedef struct {
 
 static tile_t    s_t[T_COUNT];
 static lv_obj_t *s_dash, *s_boot;
-static lv_obj_t *s_rpm_bar, *s_mph, *s_gear;
+static lv_obj_t *s_rpm_bar, *s_mph, *s_gear, *s_no_can;
+static bool      s_no_can_shown;
 static lv_obj_t *s_fuel_bar, *s_fuel_val, *s_eth_val, *s_odo_val;
 static lv_obj_t *s_sel_box[5], *s_sel_lbl[5];
 static int       s_sel = -2;          // force first paint
@@ -182,6 +183,10 @@ static void build_dash(void)
         int last = DASH7_RPM_MAX / 1000;
         lv_obj_set_pos(l, 20 + 760 * k / last - (k == last ? 12 : 5), BAR_Y + BAR_H + 8);
     }
+    // Over the bar, which is empty anyway when the car is not answering.
+    s_no_can = label(s_dash, "NO CAN", &lv_font_montserrat_28, C_RED);
+    lv_obj_align(s_no_can, LV_ALIGN_TOP_MID, 0, BAR_Y + (BAR_H - 28) / 2);
+    lv_obj_add_flag(s_no_can, LV_OBJ_FLAG_HIDDEN);
 
     // Tiles.
     make_tile(T_WATER,    s_dash, "WATER",    20, TILE_Y0);
@@ -294,6 +299,12 @@ static void set_selector(char c)
 
 void dash7_update(const dash7_values_t *v)
 {
+    if (v->no_can != s_no_can_shown) {
+        s_no_can_shown = v->no_can;
+        if (v->no_can) lv_obj_clear_flag(s_no_can, LV_OBJ_FLAG_HIDDEN);
+        else           lv_obj_add_flag(s_no_can, LV_OBJ_FLAG_HIDDEN);
+    }
+
     // RPM bar + number. The bar moves in 25 rpm steps so tiny jitter does not
     // trigger a redraw of the whole strip.
     int rpm = isnan(v->rpm) ? 0 : (int)v->rpm;

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 // ---------------------------------------------------------------------------
 // WARNING THRESHOLDS -- carried over unchanged from the two round gauges.
@@ -45,6 +46,7 @@ typedef struct {
     float boost_psi;
     char  prndl;        // 'P' 'R' 'N' 'D' 'M', or 0 for none
     int   gear;         // 1..8, -1 reverse, 0 none
+    bool  no_can;       // car not answering: shows a NO CAN warning
     double odo_miles;   // odometer; double so the tenths survive at 6 digits
 } dash7_values_t;
 

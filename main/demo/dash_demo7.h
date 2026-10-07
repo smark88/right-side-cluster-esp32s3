@@ -4,7 +4,7 @@
 #include "dash7.h"
 
 // 1 = simulated engine, CAN never starts. 0 = real data from the car.
-#define DASH_DEMO_MODE 1
+#define DASH_DEMO_MODE 0
 
 // Walk each tile past its warning threshold in turn so the red flashes can be
 // checked on the bench. 0 = plausible values only, nothing ever alarms.

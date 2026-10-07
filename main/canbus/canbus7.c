@@ -5,10 +5,12 @@
 
 #include "canbus.h"
 #include "obd_poll.h"
+#include "canbus7.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 static const char *TAG = "CANBUS";
 
@@ -17,9 +19,16 @@ static const char *TAG = "CANBUS";
 
 volatile can_dash_data_t can_data = {0};
 
+// 64-bit, written on core 0 and read on core 1: a torn read can at worst
+// misjudge staleness for one 16ms frame, which the 2s window absorbs.
+static volatile int64_t s_last_obd_us;
+
+int64_t canbus_last_obd_us(void) { return s_last_obd_us; }
+
 void process_can_frame(uint32_t id, uint8_t *data)
 {
-    obd_poll_handle_frame(id, data, 8);
+    if (obd_poll_handle_frame(id, data, 8))
+        s_last_obd_us = esp_timer_get_time();
 }
 
 void canbus_init(void)

@@ -18,6 +18,7 @@
 #include "canbus.h"
 #include "obd_poll.h"
 #include "odometer.h"
+#include "canbus7.h"
 
 static const char *TAG = "MAIN7";
 
@@ -29,6 +30,10 @@ static const char *TAG = "MAIN7";
 
 // Below this the speed reading is noise, not motion (same as gauge one).
 #define SPEED_MIN_VALID_MPH 3.0f
+
+// No OBD reply for this long and the dash shows NO CAN. The poller asks
+// ~50 times a second, so 2s of silence means wiring or the car, not luck.
+#define NO_CAN_AFTER_US (2 * 1000 * 1000)
 
 static float s_rpm_disp;
 
@@ -77,6 +82,12 @@ static void update_cb(lv_timer_t *t)
     last_odo_us = now_us;
 #endif
     v.odo_miles = odometer_get_miles();
+
+#if DASH_DEMO_MODE
+    v.no_can = false;
+#else
+    v.no_can = esp_timer_get_time() - canbus_last_obd_us() > NO_CAN_AFTER_US;
+#endif
 
     // Smooth the RPM so the bar sweeps rather than steps at OBD's ~8 Hz.
     s_rpm_disp += 0.35f * (v.rpm - s_rpm_disp);
