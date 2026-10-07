@@ -29,7 +29,7 @@
 #define WARN_FLASH_MS        450
 
 #define DASH7_RPM_MAX       7000   // bar full scale, ticks 0-7
-#define DASH7_SHIFT_RPM     6600   // bar turns blue here: shift
+#define DASH7_SHIFT_RPM     6500   // stock redline: bar blinks blue from here
 
 // Every value is NAN when there is no reading; the dash shows "--".
 typedef struct {
