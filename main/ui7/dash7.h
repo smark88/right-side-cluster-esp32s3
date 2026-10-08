@@ -21,6 +21,11 @@
 #define WARN_OIL_PSI_MIN      15.0f
 #define WARN_OIL_PSI_CLEAR    18.0f
 #define WARN_OIL_PSI_MIN_RPM 400       // a stopped engine has no oil pressure
+// Oil pressure lags the crank on start-up, and one stray reading is not a
+// failing pump: ignore the first seconds of running, and only alarm once the
+// pressure has stayed low this long (~3 consecutive readings at 300ms).
+#define WARN_OIL_PSI_START_MS   3000
+#define WARN_OIL_PSI_SUSTAIN_MS 1000
 #define WARN_TRANS_MAX       260.0f
 #define WARN_TRANS_CLEAR     255.0f
 #define WARN_IAT_MAX         170.0f

@@ -346,16 +346,34 @@ void dash7_update(const dash7_values_t *v)
         (s_t[T_IAT].alarm ? v->iat_f > WARN_IAT_CLEAR : v->iat_f > WARN_IAT_MAX));
 
     set_num(s_t[T_OIL_PSI].val, v->oil_psi, "%.0f");
-    // A stopped engine has no oil pressure; only alarm with it turning.
-    set_alarm(T_OIL_PSI, !isnan(v->oil_psi) && rpm >= WARN_OIL_PSI_MIN_RPM &&
-        (s_t[T_OIL_PSI].alarm ? v->oil_psi < WARN_OIL_PSI_CLEAR
-                              : v->oil_psi < WARN_OIL_PSI_MIN));
+    // A stopped engine has no oil pressure; only alarm with it turning, past
+    // the start-up lag, and once the low reading has persisted.
+    {
+        static int64_t turning_since, low_since;
+        int64_t now = now_ms();
+        bool turning = rpm >= WARN_OIL_PSI_MIN_RPM;
+        if (!turning)            turning_since = 0;
+        else if (!turning_since) turning_since = now;
+
+        bool alarmed = s_t[T_OIL_PSI].alarm;
+        bool low = !isnan(v->oil_psi) && turning &&
+                   now - turning_since >= WARN_OIL_PSI_START_MS &&
+                   v->oil_psi < (alarmed ? WARN_OIL_PSI_CLEAR : WARN_OIL_PSI_MIN);
+        if (!low)            low_since = 0;
+        else if (!low_since) low_since = now;
+
+        set_alarm(T_OIL_PSI, low && (alarmed || now - low_since >= WARN_OIL_PSI_SUSTAIN_MS));
+    }
 
     set_num(s_t[T_TRANS].val, v->trans_f, "%.0f");
     set_alarm(T_TRANS, !isnan(v->trans_f) &&
         (s_t[T_TRANS].alarm ? v->trans_f > WARN_TRANS_CLEAR : v->trans_f > WARN_TRANS_MAX));
 
-    set_num(s_t[T_BOOST].val, v->boost_psi, "%.1f");
+    // Boost only: vacuum (idle and cruise sit around -9 psi) shows as 0, the
+    // way HP Tuners' boost channel does. The poller keeps the signed value.
+    float boost = v->boost_psi;
+    if (!isnan(boost) && boost < 0.0f) boost = 0.0f;
+    set_num(s_t[T_BOOST].val, boost, "%.1f");
 
     // Fuel and ethanol.
     int fuel = isnan(v->fuel_pct) ? 0 : (int)v->fuel_pct;
