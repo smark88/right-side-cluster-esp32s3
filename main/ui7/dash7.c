@@ -232,15 +232,15 @@ static void build_dash(void)
     // enabled) sits in the bottom-right corner, right of the odometer.
     lv_obj_t *fc = label(s_dash, "FUEL", &lv_font_montserrat_20, C_MUTED);
     lv_obj_set_pos(fc, 20, 430);
-    s_fuel_bar = fastbar_create(s_dash, 80, 424, 300, 34, 100, C_TRACK, C_GREEN, 6);
+    s_fuel_bar = fastbar_create(s_dash, 80, 424, 280, 34, 100, C_TRACK, C_GREEN, 6);
     s_fuel_val = label(s_dash, "--", &lv_font_montserrat_20, C_WHITE);
-    lv_obj_set_pos(s_fuel_val, 390, 430);
+    lv_obj_set_pos(s_fuel_val, 370, 430);
     lv_obj_t *ec = label(s_dash, "ETH", &lv_font_montserrat_20, C_MUTED);
-    lv_obj_set_pos(ec, 452, 430);
+    lv_obj_set_pos(ec, 432, 430);
     s_eth_val = label(s_dash, "--", &lv_font_montserrat_20, C_WHITE);
-    lv_obj_set_pos(s_eth_val, 498, 430);
+    lv_obj_set_pos(s_eth_val, 478, 430);
     lv_obj_t *oc = label(s_dash, "ODO", &lv_font_montserrat_20, C_MUTED);
-    lv_obj_set_pos(oc, 556, 430);
+    lv_obj_set_pos(oc, 562, 430);
     s_odo_val = label(s_dash, "--", &lv_font_montserrat_20, C_WHITE);
     lv_obj_set_pos(s_odo_val, 608, 430);
 
@@ -387,7 +387,8 @@ void dash7_update(const dash7_values_t *v)
         }
     }
     set_num(s_fuel_val, v->fuel_pct, "%.0f%%");
-    set_num(s_eth_val, v->ethanol_pct, "%.0f%%");
+    // One decimal, as HP Tuners shows it: the ECM reports in ~0.4% steps.
+    set_num(s_eth_val, v->ethanol_pct, "%.1f%%");
 
     // Tenths change every ~6s at 60 mph, so this almost never repaints.
     char ob[16];
