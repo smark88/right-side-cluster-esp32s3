@@ -369,11 +369,8 @@ void dash7_update(const dash7_values_t *v)
     set_alarm(T_TRANS, !isnan(v->trans_f) &&
         (s_t[T_TRANS].alarm ? v->trans_f > WARN_TRANS_CLEAR : v->trans_f > WARN_TRANS_MAX));
 
-    // Boost only: vacuum (idle and cruise sit around -9 psi) shows as 0, the
-    // way HP Tuners' boost channel does. The poller keeps the signed value.
-    float boost = v->boost_psi;
-    if (!isnan(boost) && boost < 0.0f) boost = 0.0f;
-    set_num(s_t[T_BOOST].val, boost, "%.1f");
+    // Signed: vacuum shows negative (about -9 psi at idle), boost positive.
+    set_num(s_t[T_BOOST].val, v->boost_psi, "%.1f");
 
     // Fuel and ethanol.
     int fuel = isnan(v->fuel_pct) ? 0 : (int)v->fuel_pct;
