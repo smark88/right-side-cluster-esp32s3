@@ -242,7 +242,7 @@ static void build_dash(void)
     lv_obj_t *oc = label(s_dash, "ODO", &lv_font_montserrat_20, C_MUTED);
     lv_obj_set_pos(oc, 554, 430);
     s_odo_val = label(s_dash, "--", &lv_font_montserrat_20, C_WHITE);
-    lv_obj_set_pos(s_odo_val, 614, 430);
+    lv_obj_set_pos(s_odo_val, 624, 430);
 
     lv_timer_create(flash_cb, WARN_FLASH_MS, NULL);
     lv_timer_create(shift_cb, SHIFT_BLINK_MS, NULL);
