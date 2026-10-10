@@ -19,6 +19,7 @@
 #include "obd_poll.h"
 #include "odometer.h"
 #include "canbus7.h"
+#include "pid_scan.h"
 
 static const char *TAG = "MAIN7";
 
@@ -64,7 +65,8 @@ static void __attribute__((unused)) fill_from_car(dash7_values_t *v)
     v->gear = isnan(g) ? 0 : (int)g;
 }
 
-static void update_cb(lv_timer_t *t)
+// Unused while PID_SCAN_MODE replaces the dash.
+static void __attribute__((unused)) update_cb(lv_timer_t *t)
 {
     dash7_values_t v;
 #if DASH_DEMO_MODE
@@ -97,7 +99,7 @@ static void update_cb(lv_timer_t *t)
 
 #if !DASH_DEMO_MODE
 // Writes to NVS once 100 m have built up since the last save.
-static void odo_save_task(void *arg)
+static void __attribute__((unused)) odo_save_task(void *arg)
 {
     for (;;) {
         odometer_periodic_save();
@@ -112,19 +114,27 @@ void app_main(void)
 
     // CAN mode drives USB_SEL high, which disconnects native USB; in demo mode
     // leave it low so both USB-C ports still work on the bench.
-    ESP_ERROR_CHECK(ch422g_init(!DASH_DEMO_MODE));
+    ESP_ERROR_CHECK(ch422g_init(PID_SCAN_MODE || !DASH_DEMO_MODE));
 
     esp_lcd_panel_handle_t panel = lcd7_init();
     lvgl7_init(panel);
+#if PID_SCAN_MODE
+    // Sweep mode 22 instead of running the dash. See canbus/pid_scan.h.
+    canbus_init();
+    pid_scan_start();
+#else
     dash7_create(BOOT_LOGO_MS);
     lv_timer_create(update_cb, UPDATE_MS, NULL);
+#endif
     lvgl7_start();
 
     // First frame (the logo) is drawn with the backlight off; then light it.
     vTaskDelay(pdMS_TO_TICKS(60));
     ch422g_set(CH422G_DISP, true);
 
-#if DASH_DEMO_MODE
+#if PID_SCAN_MODE
+    ESP_LOGI(TAG, "PID scan mode -- dash not running");
+#elif DASH_DEMO_MODE
     dash_demo7_start();
     ESP_LOGI(TAG, "demo mode -- CAN not started");
 #else

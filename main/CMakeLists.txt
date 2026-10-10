@@ -41,6 +41,7 @@ else()
             "demo/dash_demo7.c"
             "canbus/canbus7.c"
             "canbus/obd_poll.c"
+            "canbus/pid_scan.c"
             "odometer/odometer.c")
     set(DASH_INCS "./board7" "./ui7" "./demo" "./canbus" "./odometer" ".")
 endif()
