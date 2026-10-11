@@ -43,9 +43,13 @@ static lv_obj_t *s_scr;
 static lv_obj_t *s_v[S_N][4];         // this min, this max, last min, last max
 
 // Oil pressure only counts once the engine has been running a moment;
-// otherwise every drive's minimum is the 0 psi before start.
+// otherwise every drive's minimum is the 0 psi before start. Its minimum is
+// also held back a window and dropped if the engine stops in the meantime:
+// at shutdown the pressure falls before the RPM reading does, which recorded
+// a 0 on the car.
 #define OIL_RUN_RPM 400
 #define OIL_RUN_MS  3000
+#define OIL_WIN_MS  1000
 
 static void blank(record_t *r)
 {
@@ -90,12 +94,17 @@ void minmax7_init(void)
     nvs_close(h);
 }
 
-static void take(int i, float v)
+static void take_min(int i, float v)
 {
-    if (isnan(v)) return;
-    if (isnan(s_cur.min[i]) || v < s_cur.min[i]) { s_cur.min[i] = v; s_dirty = true; }
-    if (isnan(s_cur.max[i]) || v > s_cur.max[i]) { s_cur.max[i] = v; s_dirty = true; }
+    if (!isnan(v) && (isnan(s_cur.min[i]) || v < s_cur.min[i])) { s_cur.min[i] = v; s_dirty = true; }
 }
+
+static void take_max(int i, float v)
+{
+    if (!isnan(v) && (isnan(s_cur.max[i]) || v > s_cur.max[i])) { s_cur.max[i] = v; s_dirty = true; }
+}
+
+static void take(int i, float v) { take_min(i, v); take_max(i, v); }
 
 void minmax7_feed(const dash7_values_t *v)
 {
@@ -105,16 +114,37 @@ void minmax7_feed(const dash7_values_t *v)
     if (!turning)            running_since = 0;
     else if (!running_since) running_since = now;
 
+    bool settled = turning && now - running_since >= OIL_RUN_MS;
+
+    // Oil pressure minimum in windows, committed one window late.
+    static float   win_min = NAN, held_min = NAN;
+    static bool    win_ok, held_ok;
+    static int64_t win_start;
+    if (!settled)                                   { win_ok = held_ok = false; }
+    else if (!isnan(v->oil_psi) &&
+             (isnan(win_min) || v->oil_psi < win_min)) win_min = v->oil_psi;
+    bool commit = false;
+    float commit_min = NAN;
+    if (now - win_start >= OIL_WIN_MS) {
+        commit = held_ok && win_ok;
+        commit_min = held_min;
+        held_min = win_min; held_ok = win_ok;
+        win_min = NAN; win_ok = settled; win_start = now;
+    }
+
     taskENTER_CRITICAL(&s_mux);
     take(S_WATER,    v->water_f);
     take(S_OIL_TEMP, v->oil_temp_f);
-    if (turning && now - running_since >= OIL_RUN_MS)
-        take(S_OIL_PSI, v->oil_psi);
+    if (settled) take_max(S_OIL_PSI, v->oil_psi);
+    if (commit)  take_min(S_OIL_PSI, commit_min);
     take(S_IAT1,     v->iat_f);
     take(S_IAT2,     v->iat2_f);
     take(S_TRANS,    v->trans_f);
-    take(S_BOOST,    v->boost_psi);
-    take(S_KNOCK,    v->knock_deg);
+    // Engine-off boost is just atmospheric and knock is 0: not engine data.
+    if (turning) {
+        take(S_BOOST, v->boost_psi);
+        take(S_KNOCK, v->knock_deg);
+    }
     taskEXIT_CRITICAL(&s_mux);
 }
 

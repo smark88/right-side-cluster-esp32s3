@@ -31,9 +31,9 @@ static void refresh_cb(lv_timer_t *t)
     buf[0] = 0;
     char nb[8];
     for (int i = 0; i < r.count && n < (int)sizeof buf; i++)
-        n += snprintf(buf + n, sizeof buf - n, "%s   %s%s\n", r.codes[i].code,
+        n += snprintf(buf + n, sizeof buf - n, "%-9s  %s   %s\n", r.codes[i].code,
                       dtc_module_name(r.codes[i].module, nb, sizeof nb),
-                      r.codes[i].pending ? "   pending" : "");
+                      dtc_kind_name(r.codes[i].kind));
     t7_set_text_if(s_list, buf);
 }
 
