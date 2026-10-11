@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 
 #include "ch422g.h"
 #include "lcd7.h"
@@ -148,6 +149,14 @@ void app_main(void)
     // First frame (the logo) is drawn with the backlight off; then light it.
     vTaskDelay(pdMS_TO_TICKS(60));
     ch422g_set(CH422G_DISP, true);
+
+    // What is left once every page is built: internal RAM is the tight one
+    // (draw buffers, bounce buffers, stacks, and LVGL's small objects all
+    // come from it first).
+    ESP_LOGI(TAG, "free: internal %u KB (largest block %u KB), PSRAM %u KB",
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
 
 #if PID_SCAN_MODE
     ESP_LOGI(TAG, "PID scan mode -- dash not running");
