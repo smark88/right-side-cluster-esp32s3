@@ -63,16 +63,18 @@ static const char SEL_LETTERS[] = "PRNDM";
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 
 // ---- critical-fault takeover -------------------------------------------------
-// A critical alarm that has held for TAKEOVER_MS covers the whole display, on
+// A critical alarm that has held for its delay covers the whole display, on
 // whichever page is showing, until it clears or is tapped away. Tapping only
 // silences that alarm until it clears; it comes back if the fault recurs.
 // Highest priority first: oil pressure kills an engine in seconds.
-#define TAKEOVER_MS 5000
-static const struct { int slot; const char *title, *unit; } CRIT[] = {
-    { T_OIL_PSI , "LOW OIL PRESSURE", "PSI" },
-    { T_WATER   , "COOLANT HOT",      "F"   },
-    { T_OIL_TEMP, "OIL TEMP HIGH",    "F"   },
-    { T_TRANS   , "TRANS TEMP HIGH",  "F"   },
+// Oil pressure is quicker than the temperatures: its tile already waits 1s
+// of sustained low pressure, so this is ~4.5s from the drop, where a
+// temperature has minutes of margin and gets the full 5s.
+static const struct { int slot; int delay_ms; const char *title, *unit; } CRIT[] = {
+    { T_OIL_PSI , 3500, "LOW OIL PRESSURE", "PSI" },
+    { T_WATER   , 5000, "COOLANT HOT",      "F"   },
+    { T_OIL_TEMP, 5000, "OIL TEMP HIGH",    "F"   },
+    { T_TRANS   , 5000, "TRANS TEMP HIGH",  "F"   },
 };
 #define N_CRIT (int)(sizeof CRIT / sizeof CRIT[0])
 static lv_obj_t *s_to, *s_to_title, *s_to_val, *s_to_unit;
@@ -183,7 +185,7 @@ static void update_takeover(void)
     for (int k = 0; k < N_CRIT; k++) {
         tile_t *t = &s_t[CRIT[k].slot];
         if (!t->alarm) { t->acked = false; continue; }
-        if (show < 0 && !t->acked && now - t->since >= TAKEOVER_MS) show = k;
+        if (show < 0 && !t->acked && now - t->since >= CRIT[k].delay_ms) show = k;
     }
     if (show != s_to_k) {
         s_to_k = show;
