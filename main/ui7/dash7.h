@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "lvgl.h"
 
 // ---------------------------------------------------------------------------
 // WARNING THRESHOLDS -- carried over unchanged from the two round gauges.
@@ -51,6 +52,8 @@ typedef struct {
     float boost_psi;
     char  prndl;        // 'P' 'R' 'N' 'D' 'M', or 0 for none
     int   gear;         // 1..8, -1 reverse, 0 none
+    float iat2_f;       // IAT sensor 2, after the supercharger
+    float knock_deg;    // knock retard, degrees pulled
     bool  no_can;       // car not answering: shows a NO CAN warning
     double odo_miles;   // odometer; double so the tenths survive at 6 digits
 } dash7_values_t;
@@ -60,3 +63,6 @@ void dash7_create(uint32_t boot_ms);
 
 // Call from an lv_timer. Redraws only what changed.
 void dash7_update(const dash7_values_t *v);
+
+// The dash page, for swipe navigation.
+lv_obj_t *dash7_screen(void);

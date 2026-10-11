@@ -33,8 +33,12 @@ else()
             "board7/ch422g.c"
             "board7/lcd7.c"
             "board7/lvgl7.c"
+            "board7/touch7.c"
             "ui7/dash7.c"
             "ui7/fastbar.c"
+            "ui7/nav7.c"
+            "ui7/minmax7.c"
+            "ui7/dtcscr7.c"
             "ui7/fonts/ui_font_rpm_96.c"
             "ui7/fonts/ui_font_gear_72.c"
             "ui7/images/c5r_blue_boot.c"
@@ -42,6 +46,7 @@ else()
             "canbus/canbus7.c"
             "canbus/obd_poll.c"
             "canbus/pid_scan.c"
+            "canbus/dtc7.c"
             "odometer/odometer.c")
     set(DASH_INCS "./board7" "./ui7" "./demo" "./canbus" "./odometer" ".")
 endif()

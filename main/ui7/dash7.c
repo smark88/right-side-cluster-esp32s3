@@ -6,22 +6,12 @@
 #include "lvgl.h"
 #include "esp_timer.h"
 #include "fastbar.h"
+#include "theme7.h"
 
 LV_FONT_DECLARE(ui_font_rpm_96);   // 96px digits, same as the round gauges
 LV_FONT_DECLARE(ui_font_gear_72);  // 72px digits + R + -, uncompressed
 LV_IMG_DECLARE(c5r_blue_boot);
 
-// ---- theme: identical palette to the round P4 gauges ----------------------
-#define C_FACE       0x070707
-#define C_RED        0xE01010
-#define C_GREEN      0x28FF00
-#define C_TRACK      0x232323
-#define C_MUTED      0xB4BAC2   // captions: light enough to read at a glance
-#define C_TILE_LINE  0x2A2E33
-#define C_TILE_BG    0x0B0D0F
-#define C_GEAR_ON_BG 0x1C2026
-#define C_WHITE      0xFFFFFF
-#define C_SHIFT      0x38B8FF   // RPM bar at/after the shift point (bright blue)
 
 // Shift light: from DASH7_SHIFT_RPM the bar blinks blue/off at this period.
 // Fast enough to catch in peripheral vision. Each toggle repaints the whole
@@ -52,6 +42,9 @@ typedef struct {
     lv_obj_t *val;
     bool      alarm;
     int64_t   hold_until;   // ms; earliest the alarm may clear
+    int64_t   since;        // ms; when the alarm came on
+    bool      acked;        // takeover dismissed; re-arms when the alarm clears
+    float     last;         // latest value, for the takeover
 } tile_t;
 
 static tile_t    s_t[T_COUNT];
@@ -69,33 +62,26 @@ static const char SEL_LETTERS[] = "PRNDM";
 
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 
+// ---- critical-fault takeover -------------------------------------------------
+// A critical alarm that has held for TAKEOVER_MS covers the whole display, on
+// whichever page is showing, until it clears or is tapped away. Tapping only
+// silences that alarm until it clears; it comes back if the fault recurs.
+// Highest priority first: oil pressure kills an engine in seconds.
+#define TAKEOVER_MS 5000
+static const struct { int slot; const char *title, *unit; } CRIT[] = {
+    { T_OIL_PSI , "LOW OIL PRESSURE", "PSI" },
+    { T_WATER   , "COOLANT HOT",      "F"   },
+    { T_OIL_TEMP, "OIL TEMP HIGH",    "F"   },
+    { T_TRANS   , "TRANS TEMP HIGH",  "F"   },
+};
+#define N_CRIT (int)(sizeof CRIT / sizeof CRIT[0])
+static lv_obj_t *s_to, *s_to_title, *s_to_val, *s_to_unit;
+static int       s_to_k = -1;           // CRIT index showing, -1 none
+
 // ---- helpers ---------------------------------------------------------------
-static lv_obj_t *label(lv_obj_t *p, const char *txt, const lv_font_t *f,
-                       uint32_t color)
-{
-    lv_obj_t *l = lv_label_create(p);
-    lv_label_set_text(l, txt);
-    lv_obj_set_style_text_font(l, f, 0);
-    lv_obj_set_style_text_color(l, lv_color_hex(color), 0);
-    return l;
-}
-
-// Only touch LVGL when the text actually changes -- setting identical text
-// still invalidates the area and costs a redraw, which on the S3 is the frame
-// budget.
-static void set_text_if(lv_obj_t *l, const char *txt)
-{
-    if (strcmp(lv_label_get_text(l), txt) != 0)
-        lv_label_set_text(l, txt);
-}
-
-static void set_num(lv_obj_t *l, float v, const char *fmt)
-{
-    char b[16];
-    if (isnan(v)) snprintf(b, sizeof b, "--");
-    else          snprintf(b, sizeof b, fmt, v);
-    set_text_if(l, b);
-}
+#define label       t7_label
+#define set_text_if t7_set_text_if
+#define set_num     t7_set_num
 
 static void make_tile(int slot, lv_obj_t *p, const char *cap, int x, int y)
 {
@@ -135,6 +121,7 @@ static void set_alarm(int slot, bool on)
         return;                                   // still inside the hold
     if (s_t[slot].alarm == on) return;
     s_t[slot].alarm = on;
+    if (on) s_t[slot].since = now;
     if (!on) {
         lv_obj_set_style_outline_opa(s_t[slot].tile, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(s_t[slot].tile, TILE_BORDER_W, 0);
@@ -145,6 +132,8 @@ static void set_alarm(int slot, bool on)
 static void flash_cb(lv_timer_t *tm)
 {
     s_flash_phase = !s_flash_phase;
+    if (s_to_k >= 0)
+        lv_obj_set_style_bg_color(s_to, lv_color_hex(s_flash_phase ? C_RED : 0x000000), 0);
     for (int i = 0; i < T_COUNT; i++) {
         if (!s_t[i].alarm) continue;
         bool red = s_flash_phase;
@@ -158,6 +147,60 @@ static void flash_cb(lv_timer_t *tm)
 
 
 // ---- screens ---------------------------------------------------------------
+static void takeover_ack_cb(lv_event_t *e)
+{
+    if (s_to_k >= 0) s_t[CRIT[s_to_k].slot].acked = true;
+}
+
+// On the top layer, so it covers every page and survives page changes.
+static void build_takeover(void)
+{
+    s_to = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_to);
+    lv_obj_set_size(s_to, 800, 480);
+    lv_obj_set_style_bg_opa(s_to, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(s_to, lv_color_hex(C_RED), 0);
+    lv_obj_add_flag(s_to, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_to, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(s_to, takeover_ack_cb, LV_EVENT_CLICKED, NULL);
+
+    s_to_title = label(s_to, "", &lv_font_montserrat_44, C_WHITE);
+    lv_obj_align(s_to_title, LV_ALIGN_TOP_MID, 0, 70);
+    s_to_val = label(s_to, "", &ui_font_rpm_96, C_WHITE);
+    lv_obj_align(s_to_val, LV_ALIGN_CENTER, -30, 10);
+    s_to_unit = label(s_to, "", &lv_font_montserrat_44, C_WHITE);
+    lv_obj_align_to(s_to_unit, s_to_val, LV_ALIGN_OUT_RIGHT_BOTTOM, 16, -10);
+    lv_obj_t *h = label(s_to, "TAP TO ACKNOWLEDGE", &lv_font_montserrat_20, C_WHITE);
+    lv_obj_align(h, LV_ALIGN_BOTTOM_MID, 0, -30);
+
+    lv_obj_add_flag(s_to, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void update_takeover(void)
+{
+    int64_t now = now_ms();
+    int show = -1;
+    for (int k = 0; k < N_CRIT; k++) {
+        tile_t *t = &s_t[CRIT[k].slot];
+        if (!t->alarm) { t->acked = false; continue; }
+        if (show < 0 && !t->acked && now - t->since >= TAKEOVER_MS) show = k;
+    }
+    if (show != s_to_k) {
+        s_to_k = show;
+        if (show < 0) {
+            lv_obj_add_flag(s_to, LV_OBJ_FLAG_HIDDEN);
+            return;
+        }
+        set_text_if(s_to_title, CRIT[show].title);
+        set_text_if(s_to_unit,  CRIT[show].unit);
+        lv_obj_clear_flag(s_to, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (show >= 0) {
+        set_num(s_to_val, s_t[CRIT[show].slot].last, "%.0f");
+        lv_obj_align_to(s_to_unit, s_to_val, LV_ALIGN_OUT_RIGHT_BOTTOM, 16, -10);
+    }
+}
+
 static void build_dash(void)
 {
     s_dash = lv_obj_create(NULL);
@@ -266,9 +309,12 @@ static void boot_done_cb(lv_timer_t *t)
     s_boot = NULL;
 }
 
+lv_obj_t *dash7_screen(void) { return s_dash; }
+
 void dash7_create(uint32_t boot_ms)
 {
     build_dash();
+    build_takeover();
 
     s_boot = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_boot, lv_color_hex(0x000000), 0);
@@ -333,10 +379,12 @@ void dash7_update(const dash7_values_t *v)
 
     // Tiles, with the same alarm rules as the round gauges.
     set_num(s_t[T_WATER].val, v->water_f, "%.0f");
+    s_t[T_WATER].last = v->water_f;
     set_alarm(T_WATER, !isnan(v->water_f) &&
         (s_t[T_WATER].alarm ? v->water_f > WARN_WATER_CLEAR : v->water_f > WARN_WATER_MAX));
 
     set_num(s_t[T_OIL_TEMP].val, v->oil_temp_f, "%.0f");
+    s_t[T_OIL_TEMP].last = v->oil_temp_f;
     set_alarm(T_OIL_TEMP, !isnan(v->oil_temp_f) &&
         (s_t[T_OIL_TEMP].alarm ? v->oil_temp_f > WARN_OIL_TEMP_CLEAR
                                : v->oil_temp_f > WARN_OIL_TEMP_MAX));
@@ -346,6 +394,7 @@ void dash7_update(const dash7_values_t *v)
         (s_t[T_IAT].alarm ? v->iat_f > WARN_IAT_CLEAR : v->iat_f > WARN_IAT_MAX));
 
     set_num(s_t[T_OIL_PSI].val, v->oil_psi, "%.0f");
+    s_t[T_OIL_PSI].last = v->oil_psi;
     // A stopped engine has no oil pressure; only alarm with it turning, past
     // the start-up lag, and once the low reading has persisted.
     {
@@ -366,6 +415,7 @@ void dash7_update(const dash7_values_t *v)
     }
 
     set_num(s_t[T_TRANS].val, v->trans_f, "%.0f");
+    s_t[T_TRANS].last = v->trans_f;
     set_alarm(T_TRANS, !isnan(v->trans_f) &&
         (s_t[T_TRANS].alarm ? v->trans_f > WARN_TRANS_CLEAR : v->trans_f > WARN_TRANS_MAX));
 
@@ -392,4 +442,6 @@ void dash7_update(const dash7_values_t *v)
     if (isnan(v->odo_miles)) snprintf(ob, sizeof ob, "--");
     else                     snprintf(ob, sizeof ob, "%.1f", v->odo_miles);
     set_text_if(s_odo_val, ob);
+
+    update_takeover();
 }

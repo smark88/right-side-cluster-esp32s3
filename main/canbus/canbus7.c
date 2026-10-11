@@ -6,6 +6,7 @@
 #include "canbus.h"
 #include "obd_poll.h"
 #include "canbus7.h"
+#include "dtc7.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -27,6 +28,9 @@ int64_t canbus_last_obd_us(void) { return s_last_obd_us; }
 
 void process_can_frame(uint32_t id, uint8_t *data)
 {
+    // Trouble-code answers first: they share the 0x7E8.. ids with poll replies.
+    if (dtc_handle_frame(id, data, 8))
+        return;
     if (obd_poll_handle_frame(id, data, 8))
         s_last_obd_us = esp_timer_get_time();
 }

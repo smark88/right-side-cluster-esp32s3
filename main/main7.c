@@ -2,7 +2,8 @@
 //
 // Replaces both round P4 gauges: talks to the car itself over the onboard CAN
 // transceiver (OBD mode 01 + GM mode 22, ported from gauge one), and shows
-// everything on one 800x480 screen.
+// everything on one 800x480 screen. Swipe left/right between three pages:
+// the gauges, min/max for this and the last drive, and trouble codes.
 
 #include <math.h>
 #include "freertos/FreeRTOS.h"
@@ -20,6 +21,11 @@
 #include "odometer.h"
 #include "canbus7.h"
 #include "pid_scan.h"
+#include "touch7.h"
+#include "nav7.h"
+#include "minmax7.h"
+#include "dtcscr7.h"
+#include "dtc7.h"
 
 static const char *TAG = "MAIN7";
 
@@ -54,6 +60,8 @@ static void __attribute__((unused)) fill_from_car(dash7_values_t *v)
     v->trans_f     = can_data.trans_temp;
     v->iat_f       = can_data.air_temp;
     v->boost_psi   = can_data.boost;
+    v->iat2_f      = can_data.air_temp2;
+    v->knock_deg   = can_data.knock_retard;
 
     // gear_sel arrives as 0 P, 1 N, 2 D, 3 R (obd_poll maps the TCM's codes).
     static const char prndl[] = { 'P', 'N', 'D', 'R' };
@@ -68,7 +76,8 @@ static void __attribute__((unused)) fill_from_car(dash7_values_t *v)
 // Unused while PID_SCAN_MODE replaces the dash.
 static void __attribute__((unused)) update_cb(lv_timer_t *t)
 {
-    dash7_values_t v;
+    // Anything a source does not fill reads as "no reading", not garbage.
+    dash7_values_t v = { .iat2_f = NAN, .knock_deg = NAN };
 #if DASH_DEMO_MODE
     dash_demo7_sample(&v);
 #else
@@ -95,14 +104,17 @@ static void __attribute__((unused)) update_cb(lv_timer_t *t)
     s_rpm_disp += 0.35f * (v.rpm - s_rpm_disp);
     v.rpm = s_rpm_disp;
     dash7_update(&v);
+    minmax7_feed(&v);
 }
 
 #if !DASH_DEMO_MODE
-// Writes to NVS once 100 m have built up since the last save.
+// Writes to NVS once 100 m have built up since the last save, and the min/max
+// record at most every 30s.
 static void __attribute__((unused)) odo_save_task(void *arg)
 {
     for (;;) {
         odometer_periodic_save();
+        minmax7_save();
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }
@@ -111,6 +123,7 @@ static void __attribute__((unused)) odo_save_task(void *arg)
 void app_main(void)
 {
     odometer_init();
+    minmax7_init();
 
     // CAN mode drives USB_SEL high, which disconnects native USB; in demo mode
     // leave it low so both USB-C ports still work on the bench.
@@ -123,7 +136,11 @@ void app_main(void)
     canbus_init();
     pid_scan_start();
 #else
+    touch7_init();
     dash7_create(BOOT_LOGO_MS);
+    nav7_add(dash7_screen());
+    nav7_add(minmax7_create(1));
+    nav7_add(dtcscr7_create(2));
     lv_timer_create(update_cb, UPDATE_MS, NULL);
 #endif
     lvgl7_start();
@@ -135,10 +152,12 @@ void app_main(void)
 #if PID_SCAN_MODE
     ESP_LOGI(TAG, "PID scan mode -- dash not running");
 #elif DASH_DEMO_MODE
+    dtc_init();            // no CAN: a read reports "no module answered"
     dash_demo7_start();
     ESP_LOGI(TAG, "demo mode -- CAN not started");
 #else
     canbus_init();
+    dtc_init();
     xTaskCreatePinnedToCore(canbus_task, "can_rx", 4096, NULL, 10, NULL, 0);
     obd_poll_start();
     xTaskCreatePinnedToCore(odo_save_task, "odo_save", 4096, NULL, 4, NULL, 0);

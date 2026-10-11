@@ -7,7 +7,7 @@
 #define FUEL_SEC  45.0f     // full -> empty
 #define IDLE_RPM  800.0f
 #define MAX_RPM   7000.0f
-#define WARN_SEC  6.0f      // seconds per warning phase
+#define WARN_SEC 10.0f      // seconds per warning phase: long enough for the 5s takeover
 
 static int64_t s_t0;
 
@@ -33,6 +33,8 @@ void dash_demo7_sample(dash7_values_t *o)
     o->iat_f      = 90.0f  + warm * 50.0f  + wob;
     o->oil_psi    = 25.0f + load * 45.0f;
     o->boost_psi  = -8.0f + load * 18.0f;
+    o->iat2_f     = o->iat_f + 15.0f + load * 40.0f;
+    o->knock_deg  = load > 0.85f ? (load - 0.85f) * 20.0f : 0.0f;
 
     static const char sel[] = "PRNDM";
     o->prndl = sel[((int)(t / 3.0f)) % 5];
