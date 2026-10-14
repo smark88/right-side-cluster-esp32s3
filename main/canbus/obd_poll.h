@@ -77,6 +77,11 @@ bool obd_poll_handle_frame(uint32_t id, const uint8_t *data, uint8_t dlc);
 // trouble codes), so a poll never lands in the middle of a multi-frame answer.
 void obd_poll_pause(bool paused);
 
+// Stop polling while the dash shows demo values instead of the car. Separate
+// from obd_poll_pause so a trouble-code read ending cannot restart polling
+// in the middle of demo mode.
+void obd_poll_hold(bool held);
+
 #ifdef __cplusplus
 }
 #endif

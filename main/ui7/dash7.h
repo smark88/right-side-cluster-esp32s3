@@ -54,7 +54,8 @@ typedef struct {
     int   gear;         // 1..8, -1 reverse, 0 none
     float iat2_f;       // IAT sensor 2, after the supercharger
     float knock_deg;    // knock retard, degrees pulled
-    bool  no_can;       // car not answering: shows a NO CAN warning
+    bool  no_can;
+    bool  demo;         // showing simulated values: DEMO badge on the gauges       // car not answering: shows a NO CAN warning
     double odo_miles;   // odometer; double so the tenths survive at 6 digits
 } dash7_values_t;
 

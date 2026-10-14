@@ -232,9 +232,10 @@ static float s_map_kpa  = 101.3f;
 // kPa per count of 0x0B. 1.0 until 0x4F reports a larger full scale.
 static float s_map_kpa_per_count = 1.0f;
 static float s_baro_kpa = 101.3f;
-static volatile bool s_paused;
+static volatile bool s_paused, s_held;
 
 void obd_poll_pause(bool paused) { s_paused = paused; }
+void obd_poll_hold(bool held)    { s_held = held; }
 
 static void bind_targets(void)
 {
@@ -479,13 +480,14 @@ static void obd_poll_task(void *arg)
                 worst = late;
             }
         }
-        if (pick >= 0 && !s_paused) {
+        bool quiet = s_paused || s_held;
+        if (pick >= 0 && !quiet) {
             send_request(&s_pids[pick]);
             s_due_ms[pick] = now + s_pids[pick].period_ms;
         }
         // Not while paused: the trouble-code reader holds the bus for ~2s
         // and nothing is asked, so nothing can answer.
-        if (!s_paused)
+        if (!quiet)
             expire_stale(now);
         vTaskDelay(pdMS_TO_TICKS(OBD_POLL_TICK_MS));
     }
@@ -501,6 +503,7 @@ void obd_poll_start(void)
 #include <stdbool.h>
 void obd_poll_start(void) {}
 void obd_poll_pause(bool paused) { (void)paused; }
+void obd_poll_hold(bool held)    { (void)held; }
 bool obd_poll_handle_frame(uint32_t id, const uint8_t *data, uint8_t dlc)
 {
     (void)id; (void)data; (void)dlc;

@@ -39,6 +39,7 @@ else()
             "ui7/nav7.c"
             "ui7/minmax7.c"
             "ui7/dtcscr7.c"
+            "ui7/settings7.c"
             "ui7/fonts/ui_font_rpm_96.c"
             "ui7/fonts/ui_font_gear_72.c"
             "ui7/images/c5r_blue_boot.c"

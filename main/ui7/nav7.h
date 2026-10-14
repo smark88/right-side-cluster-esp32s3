@@ -4,6 +4,9 @@
 
 #include "lvgl.h"
 
+// Gauges, min/max, trouble codes, settings.
+#define NAV7_PAGES 4
+
 void nav7_add(lv_obj_t *scr);
 
 // Page dots along the bottom edge, for screens with room for them.

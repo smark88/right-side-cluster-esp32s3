@@ -26,6 +26,7 @@
 #include "nav7.h"
 #include "minmax7.h"
 #include "dtcscr7.h"
+#include "settings7.h"
 #include "dtc7.h"
 
 static const char *TAG = "MAIN7";
@@ -79,17 +80,18 @@ static void __attribute__((unused)) update_cb(lv_timer_t *t)
 {
     // Anything a source does not fill reads as "no reading", not garbage.
     dash7_values_t v = { .iat2_f = NAN, .knock_deg = NAN };
-#if DASH_DEMO_MODE
-    dash_demo7_sample(&v);
-#else
-    fill_from_car(&v);
-#endif
+    // Demo is either the bench build or switched on from the settings page.
+    bool demo = settings7_demo();
+    if (demo) dash_demo7_sample(&v);
+    else      fill_from_car(&v);
+    v.demo = demo;
+
     // Odometer: distance = mph * elapsed hours. Demo speed is not real
     // driving, so in demo mode it only displays the stored mileage.
 #if !DASH_DEMO_MODE
     static int64_t last_odo_us;
     int64_t now_us = esp_timer_get_time();
-    if (last_odo_us != 0 && v.mph >= SPEED_MIN_VALID_MPH)
+    if (!demo && last_odo_us != 0 && v.mph >= SPEED_MIN_VALID_MPH)
         odometer_add_miles(v.mph * (double)(now_us - last_odo_us) / 3600000000.0);
     last_odo_us = now_us;
 #endif
@@ -98,14 +100,17 @@ static void __attribute__((unused)) update_cb(lv_timer_t *t)
 #if DASH_DEMO_MODE
     v.no_can = false;
 #else
-    v.no_can = esp_timer_get_time() - canbus_last_obd_us() > NO_CAN_AFTER_US;
+    v.no_can = !demo && esp_timer_get_time() - canbus_last_obd_us() > NO_CAN_AFTER_US;
 #endif
 
     // Smooth the RPM so the bar sweeps rather than steps at OBD's ~8 Hz.
     s_rpm_disp += 0.35f * (v.rpm - s_rpm_disp);
     v.rpm = s_rpm_disp;
     dash7_update(&v);
-    minmax7_feed(&v);
+    // Demo switched on in the car must not land in this drive's record. The
+    // bench build feeds it (nothing is saved there) so the page can be seen.
+    if (!demo || DASH_DEMO_MODE)
+        minmax7_feed(&v);
 }
 
 #if !DASH_DEMO_MODE
@@ -142,6 +147,7 @@ void app_main(void)
     nav7_add(dash7_screen());
     nav7_add(minmax7_create(1));
     nav7_add(dtcscr7_create(2));
+    nav7_add(settings7_create(3));
     lv_timer_create(update_cb, UPDATE_MS, NULL);
 #endif
     lvgl7_start();

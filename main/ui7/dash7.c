@@ -49,8 +49,8 @@ typedef struct {
 
 static tile_t    s_t[T_COUNT];
 static lv_obj_t *s_dash, *s_boot;
-static lv_obj_t *s_rpm_bar, *s_mph, *s_gear, *s_no_can;
-static bool      s_no_can_shown;
+static lv_obj_t *s_rpm_bar, *s_mph, *s_gear, *s_no_can, *s_demo;
+static bool      s_no_can_shown, s_demo_shown;
 static lv_obj_t *s_fuel_bar, *s_fuel_val, *s_eth_val, *s_odo_val;
 static lv_obj_t *s_sel_box[5], *s_sel_lbl[5];
 static int       s_sel = -2;          // force first paint
@@ -233,6 +233,18 @@ static void build_dash(void)
     lv_obj_align(s_no_can, LV_ALIGN_TOP_MID, 0, BAR_Y + (BAR_H - 28) / 2);
     lv_obj_add_flag(s_no_can, LV_OBJ_FLAG_HIDDEN);
 
+    // Demo values must never pass for real ones: a solid amber badge, on a
+    // black pill so it reads over the moving bar.
+    s_demo = label(s_dash, "DEMO", &lv_font_montserrat_28, 0xF2A900);
+    lv_obj_set_style_bg_color(s_demo, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_demo, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(s_demo, 6, 0);
+    lv_obj_set_style_pad_hor(s_demo, 12, 0);
+    lv_obj_set_style_border_color(s_demo, lv_color_hex(0xF2A900), 0);
+    lv_obj_set_style_border_width(s_demo, 2, 0);
+    lv_obj_align(s_demo, LV_ALIGN_TOP_MID, 0, BAR_Y + (BAR_H - 36) / 2);
+    lv_obj_add_flag(s_demo, LV_OBJ_FLAG_HIDDEN);
+
     // Tiles.
     make_tile(T_WATER,    s_dash, "WATER",    20, TILE_Y0);
     make_tile(T_OIL_TEMP, s_dash, "OIL TEMP", 20, TILE_Y0 + 108);
@@ -347,6 +359,12 @@ static void set_selector(char c)
 
 void dash7_update(const dash7_values_t *v)
 {
+    if (v->demo != s_demo_shown) {
+        s_demo_shown = v->demo;
+        if (v->demo) lv_obj_clear_flag(s_demo, LV_OBJ_FLAG_HIDDEN);
+        else         lv_obj_add_flag(s_demo, LV_OBJ_FLAG_HIDDEN);
+    }
+
     if (v->no_can != s_no_can_shown) {
         s_no_can_shown = v->no_can;
         if (v->no_can) lv_obj_clear_flag(s_no_can, LV_OBJ_FLAG_HIDDEN);

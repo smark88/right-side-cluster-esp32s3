@@ -24,7 +24,7 @@ Hardware: [Waveshare ESP32-S3-Touch-LCD-7](https://www.waveshare.com/wiki/ESP32-
 
 ### Pages
 
-Swipe left and right between them. The dots at the bottom show which page you
+Swipe left and right between the four of them. The dots at the bottom show which page you
 are on.
 
 1. **Gauges**
@@ -48,6 +48,10 @@ are on.
      current / pending / history, plus the generic OBD stored and pending codes.
    - Clear asks for confirmation first. Most ECMs only accept it with the key on
      and the engine off.
+4. **Settings**: demo mode on/off, each way behind a confirm.
+   - While it is on, the gauges show simulated values with an amber **DEMO**
+     badge, the car is not polled, and the odometer and min/max do not record.
+   - Never saved: every power-on starts on live data from the car.
 
 ### Warnings
 
@@ -94,7 +98,9 @@ recovered past the clear value, and stays lit at least 2s once tripped.
 4. Pick the run mode: `idf.py menuconfig` -> **Dash (7in)** -> **Run mode**.
    The committed default is Car.
    - **Car**: polls the car and runs the dash.
-   - **Demo**: a simulated engine for the bench. CAN never starts. Optionally
+   - **Demo**: a simulated engine for the bench. CAN never starts. (In a Car
+     build, demo can also be switched on for the moment from the Settings
+     page.) Optionally
      walks each tile through its warning so the alarms can be checked.
    - **PID scan**: sweeps GM mode 22 identifiers on the ECM to find a value no
      published list has. See [main/canbus/pid_scan.h](main/canbus/pid_scan.h).
@@ -140,7 +146,7 @@ or TCM (0x7E2).
 | `main/main7.c` | Start-up, the 16ms update loop, odometer |
 | `main/board7/` | LCD, LVGL port, touch (GT911), CH422G I/O expander |
 | `main/canbus/` | CAN driver, OBD poller (`obd_poll.c`: the PID table), trouble codes, PID scan |
-| `main/ui7/` | The three pages, swipe navigation, warning limits (`dash7.h`) |
+| `main/ui7/` | The four pages, swipe navigation, warning limits (`dash7.h`) |
 | `main/demo/` | Bench simulator |
 | `main/odometer/` | Odometer kept in flash |
 

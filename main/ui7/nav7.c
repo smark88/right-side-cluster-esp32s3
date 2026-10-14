@@ -1,7 +1,7 @@
 #include "nav7.h"
 #include "theme7.h"
 
-#define MAX_PAGES 4
+#define MAX_PAGES NAV7_PAGES
 // Short: the slide redraws the full 800x480 every frame, which is the one
 // thing this panel is slow at, so keep it brief.
 #define SLIDE_MS  220
@@ -36,7 +36,7 @@ void nav7_add(lv_obj_t *scr)
 
 void nav7_dots(lv_obj_t *scr, int index)
 {
-    const int n = 3, d = 10, gap = 12;
+    const int n = NAV7_PAGES, d = 10, gap = 12;
     int x0 = 400 - (n * d + (n - 1) * gap) / 2;
     for (int i = 0; i < n; i++) {
         lv_obj_t *o = lv_obj_create(scr);
