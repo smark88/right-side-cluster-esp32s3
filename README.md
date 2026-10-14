@@ -28,15 +28,17 @@ Swipe left and right between the four of them. The dots at the bottom show which
 are on.
 
 1. **Gauges**
-   - RPM bar across the top, 0-7000. From 6500 (stock redline) it flashes blue
-     as a shift light.
-   - MPH, engaged gear (from the TCM) and P R N D M.
-   - Tiles: water, oil temp, IAT, oil psi, trans temp, boost (vacuum shows
-     negative).
-   - Bottom row: fuel level, ethanol % (flex fuel), odometer.
-   - A tile flashes red when its reading is out of range, and critical faults
-     take over the whole screen (see Warnings).
-   - Red **NO CAN** over the RPM bar if the car stops answering for 2s.
+   - 15 shift-light dots across the top, filling from both ends toward the
+     middle (green, yellow, orange, red) from 3000 rpm. From 6500 (stock
+     redline) they all flash blue.
+   - Big MPH in the centre with the odometer under it; gear and P R N D M on
+     the left; fuel (with a bar) and ethanol % on the right.
+   - Six tiles along the bottom, grouped: oil psi, oil temp, water | trans |
+     IAT, boost (vacuum shows negative).
+   - Each tile is colour-coded: blue still cold, green normal, amber nearing
+     its limit. In alarm the whole tile flashes red, and critical faults take
+     over the whole screen (see Warnings).
+   - Red **NO CAN** over the dots if the car stops answering for 2s.
 2. **Min / Max**: lowest and highest water, oil temp, oil psi, IAT 1 and 2,
    trans, boost and knock retard, for this drive and the last one.
    - Nothing records until the engine has run 5s, so key-on, engine-off
@@ -55,7 +57,9 @@ are on.
 
 ### Warnings
 
-A tile flashes red while out of range. It clears only once the reading has
+A tile flashes solid red while out of range. Before that, its colour
+shows where it sits: blue below the cold point, amber from the warm point
+(cut-offs in `main/ui7/dash7.h`, `COL_*`). It clears only once the reading has
 recovered past the clear value, and stays lit at least 2s once tripped.
 
 | Tile | Trips | Clears | Full-screen takeover |

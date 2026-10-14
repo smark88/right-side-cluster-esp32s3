@@ -35,8 +35,26 @@
 #define WARN_MIN_HOLD_MS    2000
 #define WARN_FLASH_MS        450
 
-#define DASH7_RPM_MAX       7000   // bar full scale, ticks 0-7
-#define DASH7_SHIFT_RPM     6500   // stock redline: bar blinks blue from here
+#define DASH7_RPM_MAX       7000
+#define DASH7_SHIFT_RPM     6500   // stock redline: every shift dot blinks blue from here
+// The 15 shift dots fill in mirrored pairs from both ends toward the middle,
+// green -> yellow -> orange -> red, between this and DASH7_SHIFT_RPM.
+#define DASH7_DOT_START_RPM 3000
+
+// ---------------------------------------------------------------------------
+// TILE COLOURS -- blue = still cold, green = normal, amber = within reach of
+// the alarm. Red is the alarm itself (the WARN_ limits above), which floods
+// the whole tile. A tile with no reading shows white "--".
+// ---------------------------------------------------------------------------
+#define COL_OIL_PSI_OK       20.0f   // 15-19 amber, below 15 is the alarm
+#define COL_OIL_TEMP_COLD   180.0f
+#define COL_OIL_TEMP_WARM   260.0f
+#define COL_WATER_COLD      160.0f
+#define COL_WATER_WARM      230.0f
+#define COL_TRANS_COLD      120.0f
+#define COL_TRANS_WARM      230.0f
+#define COL_IAT_WARM        130.0f
+#define COL_BOOST_WARM       11.0f   // nearing the stock LT4 maximum; no alarm
 
 // Every value is NAN when there is no reading; the dash shows "--".
 typedef struct {
