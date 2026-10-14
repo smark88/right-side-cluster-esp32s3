@@ -273,8 +273,8 @@ static void build_dash(void)
     s_gear = label(s_dash, "--", &ui_font_gear_72, C_WHITE);
     lv_obj_align(s_gear, LV_ALIGN_TOP_MID, 0, 268);
 
-    // Bottom strip: fuel bar, ethanol, odometer. The perf monitor (when
-    // enabled) sits in the bottom-right corner, right of the odometer.
+    // Bottom strip: fuel bar, ethanol, odometer. LVGL's FPS/CPU overlay, if
+    // turned on in menuconfig to measure, lands on top of the odometer.
     lv_obj_t *fc = label(s_dash, "FUEL", &lv_font_montserrat_20, C_MUTED);
     lv_obj_set_pos(fc, 20, 430);
     s_fuel_bar = fastbar_create(s_dash, 80, 424, 280, 34, 100, C_TRACK, C_GREEN, 6);

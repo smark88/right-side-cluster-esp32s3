@@ -39,7 +39,13 @@ extern "C" {
 // out what an ECU actually supports and what an undocumented enum means: turn
 // it on, plug the laptop into this gauge, and watch the console while you
 // change the thing being measured (e.g. move the shifter P-R-N-D-M).
+// Set in menuconfig -> Dash (7in) -> Log every OBD reply.
+#include "sdkconfig.h"
+#ifdef CONFIG_DASH_OBD_DEBUG
+#define OBD_DEBUG 1
+#else
 #define OBD_DEBUG 0
+#endif
 
 // Functional request address and the ECU reply range.
 #define OBD_REQ_ID    0x7DF

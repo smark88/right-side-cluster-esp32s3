@@ -1,4 +1,4 @@
-menu "Example Configuration"
+menu "Example Configuration (round display)"
     config EXAMPLE_DOUBLE_FB
         bool "Use double Frame Buffer"
         default n
@@ -20,32 +20,6 @@ menu "Example Configuration"
             Note, if the Double Frame Buffer is used, then we can also avoid the tearing effect without the lock.
 
             
-    config LV_USE_DEMO_WIDGETS
-        bool "Show some widget"
-        default y
-        
-    config LV_DEMO_WIDGETS_SLIDESHOW
-        bool "Enable slide show"
-        depends on LV_USE_DEMO_WIDGETS
-        default y
-
-    config LV_USE_DEMO_KEYPAD_AND_ENCODER
-        bool "Demonstrate the usage of encoder and keyboard"
-        default y
-
-    config LV_USE_DEMO_BENCHMARK
-        bool "Benchmark your system"
-        default y
-
-    config LV_USE_DEMO_STRESS
-        bool "Stress test for LVGL"
-        default y
-
-    config LV_USE_DEMO_MUSIC
-        bool "Music player demo"
-        default y
-
-    
     config LV_FONT_MONTSERRAT_12
         bool "Enable Montserrat 12"
         default y if !LV_CONF_MINIMAL
@@ -60,17 +34,56 @@ menu "Example Configuration"
         
 
 
-    config BT_ENABLED
-        bool "Select this option to enable Bluetooth"
-        default y 
-
-    config BT_BLE_50_FEATURES_SUPPORTED
-        bool "Enabling this option activates BLE 5.0 features"
-        default y 
-        
-    config BT_BLE_42_FEATURES_SUPPORTED
-        bool "This enables BLE 4.2 features."
-        default y 
 endmenu
 
- 
+menu "Dash (7in)"
+
+    choice DASH_MODE
+        prompt "Run mode"
+        default DASH_MODE_CAR
+        help
+            What the 7in firmware does at power-on.
+
+        config DASH_MODE_CAR
+            bool "Car: poll the ECM over CAN and run the dash"
+        config DASH_MODE_DEMO
+            bool "Demo: simulated engine, CAN never starts"
+            help
+                For the bench. Native USB stays connected, because CAN and USB
+                share GPIO19/20 and only the CAN modes switch them over.
+        config DASH_MODE_PID_SCAN
+            bool "PID scan: sweep GM mode 22 on the ECM, no dash"
+            help
+                Asks the ECM for every mode 22 identifier in the range below
+                and logs each answer. Read-only. See canbus/pid_scan.h.
+    endchoice
+
+    config DASH_DEMO_EXERCISE_WARNINGS
+        bool "Demo: walk each tile past its warning limit in turn"
+        depends on DASH_MODE_DEMO
+        default y
+        help
+            So the warning flashes and the full-screen alert can be checked on
+            the bench. Off, the demo only ever shows healthy values.
+
+    config DASH_OBD_DEBUG
+        bool "Log every OBD reply"
+        default n
+        help
+            Logs each poll answer (PID, raw bytes, decoded value) and every
+            negative response, on the UART port. For comparing against HP
+            Tuners or working out what the ECM supports.
+
+    config DASH_PID_SCAN_FIRST
+        hex "PID scan: first identifier"
+        depends on DASH_MODE_PID_SCAN
+        range 0x0000 0xFFFF
+        default 0x0000
+
+    config DASH_PID_SCAN_LAST
+        hex "PID scan: last identifier"
+        depends on DASH_MODE_PID_SCAN
+        range 0x0000 0xFFFF
+        default 0x2FFF
+
+endmenu

@@ -44,12 +44,12 @@ static lv_obj_t *s_v[S_N][4];         // this min, this max, last min, last max
 
 // Nothing records until the engine has run this long: key-on-engine-off
 // readings are not engine-health data, and oil pressure is still building.
-// The oil pressure minimum is also held back a window and dropped if the
-// engine stops in the meantime: at shutdown the pressure falls before the RPM
-// reading does, which recorded a 0 on the car.
+// Every minimum is also held back a window and dropped if the engine stops in
+// the meantime: at shutdown a reading can fall before the RPM reading does --
+// oil pressure recorded a 0 on the car that way. Maxima are taken at once.
 #define RUN_RPM     400
 #define RUN_MS      5000
-#define OIL_WIN_MS  1000
+#define MIN_WIN_MS  1000
 
 static void blank(record_t *r)
 {
@@ -104,8 +104,6 @@ static void take_max(int i, float v)
     if (!isnan(v) && (isnan(s_cur.max[i]) || v > s_cur.max[i])) { s_cur.max[i] = v; s_dirty = true; }
 }
 
-static void take(int i, float v) { take_min(i, v); take_max(i, v); }
-
 void minmax7_feed(const dash7_values_t *v)
 {
     static int64_t running_since;
@@ -116,33 +114,46 @@ void minmax7_feed(const dash7_values_t *v)
 
     bool settled = turning && now - running_since >= RUN_MS;
 
-    // Oil pressure minimum in windows, committed one window late.
-    static float   win_min = NAN, held_min = NAN;
-    static bool    win_ok, held_ok;
+    const float now_v[S_N] = {
+        [S_WATER] = v->water_f,  [S_OIL_TEMP] = v->oil_temp_f, [S_OIL_PSI] = v->oil_psi,
+        [S_IAT1]  = v->iat_f,    [S_IAT2]     = v->iat2_f,     [S_TRANS]   = v->trans_f,
+        [S_BOOST] = v->boost_psi, [S_KNOCK]   = v->knock_deg,
+    };
+
+    // Minimums in windows: this one's, and the previous one's waiting to be
+    // committed. A window counts only if the engine was settled throughout
+    // it and through the one after.
+    static float   win[S_N], held[S_N];
+    static bool    win_ok, held_ok, started;
     static int64_t win_start;
-    if (!settled)                                   { win_ok = held_ok = false; }
-    else if (!isnan(v->oil_psi) &&
-             (isnan(win_min) || v->oil_psi < win_min)) win_min = v->oil_psi;
-    bool commit = false;
-    float commit_min = NAN;
-    if (now - win_start >= OIL_WIN_MS) {
+    if (!started) {
+        for (int i = 0; i < S_N; i++) win[i] = held[i] = NAN;
+        started = true;
+    }
+    if (!settled)
+        win_ok = held_ok = false;
+    else
+        for (int i = 0; i < S_N; i++)
+            if (!isnan(now_v[i]) && (isnan(win[i]) || now_v[i] < win[i])) win[i] = now_v[i];
+
+    bool  commit = false;
+    float commit_min[S_N];
+    if (now - win_start >= MIN_WIN_MS) {
         commit = held_ok && win_ok;
-        commit_min = held_min;
-        held_min = win_min; held_ok = win_ok;
-        win_min = NAN; win_ok = settled; win_start = now;
+        for (int i = 0; i < S_N; i++) {
+            commit_min[i] = held[i];
+            held[i] = win[i];
+            win[i] = NAN;
+        }
+        held_ok = win_ok;
+        win_ok = settled;
+        win_start = now;
     }
 
     taskENTER_CRITICAL(&s_mux);
-    if (commit) take_min(S_OIL_PSI, commit_min);
-    if (settled) {
-        take_max(S_OIL_PSI, v->oil_psi);
-        take(S_WATER,    v->water_f);
-        take(S_OIL_TEMP, v->oil_temp_f);
-        take(S_IAT1,     v->iat_f);
-        take(S_IAT2,     v->iat2_f);
-        take(S_TRANS,    v->trans_f);
-        take(S_BOOST,    v->boost_psi);
-        take(S_KNOCK,    v->knock_deg);
+    for (int i = 0; i < S_N; i++) {
+        if (commit)  take_min(i, commit_min[i]);
+        if (settled) take_max(i, now_v[i]);
     }
     taskEXIT_CRITICAL(&s_mux);
 }

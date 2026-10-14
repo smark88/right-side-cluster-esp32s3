@@ -34,10 +34,10 @@ typedef struct {
     float      *target;     // used when dest is DEST_FIELD
     const char *name;
     // Everything below is optional and left zero for the common case: standard
-    // mode 01, functional request to 0x7DF, answered by the ECM at 0x7E8. Only
-    // the GM enhanced entries fill them in.
+    // mode 01, asked of the ECM at 0x7E0, answered at 0x7E8. Only the GM
+    // enhanced entries fill them in.
     uint8_t     mode;       // 0 or 0x01 = mode 01, 0x22 = GM enhanced
-    uint16_t    req_id;     // 0 = OBD_REQ_ID
+    uint16_t    req_id;     // 0 = OBD_ECM_REQ
     uint16_t    resp_id;    // 0 = OBD_ECU_ID
 } obd_pid_t;
 
@@ -217,6 +217,14 @@ static float *s_targets[PID_COUNT];
 
 static int64_t s_due_ms[PID_COUNT];
 
+// When each PID last answered (ms, 0 = not since it last expired). A value
+// that stops being refreshed reads "--" rather than freezing on its last
+// number: a frozen healthy oil pressure would hide a real loss and could never
+// trip the warning. NO CAN only covers the case where everything goes quiet.
+static volatile uint32_t s_seen_ms[PID_COUNT];
+#define STALE_MIN_MS      3000
+#define STALE_PERIODS     3        // or this many missed polls, if longer
+
 // Boost is manifold pressure above ambient, so it needs both readings. Seeded
 // at sea level: barometric is polled every 5s and until the first reply lands
 // this keeps boost plausible rather than reading a full atmosphere of it.
@@ -266,7 +274,10 @@ static void send_request(const obd_pid_t *p)
     uint8_t mode = p->mode ? p->mode : 0x01;
 
     twai_message_t msg = {0};
-    msg.identifier = p->req_id ? p->req_id : OBD_REQ_ID;
+    // Physical, not the functional 0x7DF: every value here has one owner, and
+    // asking all modules just makes the TCM answer mode 01 too, ~25 extra
+    // frames a second that are then thrown away.
+    msg.identifier = p->req_id ? p->req_id : OBD_ECM_REQ;
     msg.data_length_code = 8;
 
     if (mode == 0x22) {
@@ -340,9 +351,9 @@ bool obd_poll_handle_frame(uint32_t id, const uint8_t *data, uint8_t dlc)
         if ((data[1] == 0x41) != (mode == 0x01))
             continue;
 
-        // Requests go out functionally on 0x7DF unless the entry says
-        // otherwise, so every OBD-capable module answers and more than one
-        // will claim the same pid. On an FR-S a second module reports coolant
+        // Requests are physical, but a reply can still come from the wrong
+        // module (another tool on the bus asking functionally, or the trouble-
+        // code reader's broadcast). On an FR-S a second module reports coolant
         // as 0, which the A*1.8-40 scaling turns into a clean -40 degF, so the
         // tile flips between the real reading and -40 depending on which reply
         // landed last. Only the module that owns the value is authoritative --
@@ -350,6 +361,7 @@ bool obd_poll_handle_frame(uint32_t id, const uint8_t *data, uint8_t dlc)
         uint16_t expect = s_pids[i].resp_id ? s_pids[i].resp_id : OBD_ECU_ID;
         if (id != expect)
             return true;              // right pid, wrong module
+        s_seen_ms[i] = (uint32_t)(esp_timer_get_time() / 1000);
 
         uint32_t raw;
         if (s_pids[i].nbytes == 2) {
@@ -419,11 +431,31 @@ bool obd_poll_handle_frame(uint32_t id, const uint8_t *data, uint8_t dlc)
     return true;      // an OBD reply, just not a PID we asked for
 }
 
+static void expire_stale(int64_t now)
+{
+    for (int i = 0; i < PID_COUNT; i++) {
+        uint32_t seen = s_seen_ms[i];
+        if (!seen) continue;
+        uint32_t limit = s_pids[i].period_ms * STALE_PERIODS;
+        if (limit < STALE_MIN_MS) limit = STALE_MIN_MS;
+        if ((uint32_t)now - seen <= limit) continue;
+        s_seen_ms[i] = 0;
+        switch (s_pids[i].dest) {
+            case DEST_MAP:       can_data.boost = NAN;            break;
+            case DEST_FIELD:
+            case DEST_PRNDL:
+            case DEST_IAT2:      if (s_targets[i]) *s_targets[i] = NAN; break;
+            default:             break;    // MAP range, baro: kept as context
+        }
+        ESP_LOGW(TAG, "%s stopped answering -- showing --", s_pids[i].name);
+    }
+}
+
 static void obd_poll_task(void *arg)
 {
     bind_targets();
-    ESP_LOGI(TAG, "polling %d PIDs (transmitting on 0x%03X)",
-             (int)PID_COUNT, OBD_REQ_ID);
+    ESP_LOGI(TAG, "polling %d PIDs (mode 01 to the ECM at 0x%03X)",
+             (int)PID_COUNT, OBD_ECM_REQ);
 
     while (1) {
         int64_t now = esp_timer_get_time() / 1000;
@@ -451,6 +483,10 @@ static void obd_poll_task(void *arg)
             send_request(&s_pids[pick]);
             s_due_ms[pick] = now + s_pids[pick].period_ms;
         }
+        // Not while paused: the trouble-code reader holds the bus for ~2s
+        // and nothing is asked, so nothing can answer.
+        if (!s_paused)
+            expire_stale(now);
         vTaskDelay(pdMS_TO_TICKS(OBD_POLL_TICK_MS));
     }
 }

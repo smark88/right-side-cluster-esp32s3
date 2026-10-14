@@ -2,7 +2,6 @@ CONFIG_LV_MEM_CUSTOM=y
 CONFIG_LV_MEMCPY_MEMSET_STD=y
 CONFIG_LV_USE_USER_DATA=y
 CONFIG_LV_USE_CHART=y
-CONFIG_LV_USE_PERF_MONITOR=y
 
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
@@ -27,3 +26,15 @@ CONFIG_LV_FONT_MONTSERRAT_44=y
 # ui_font_rpm_96 (shared with the round gauges) is RLE-compressed; without
 # this LVGL silently draws nothing for it -- the MPH number was invisible.
 CONFIG_LV_USE_FONT_COMPRESSED=y
+
+# ---- 7in combined dash: cleanup ---------------------------------------------
+# Leftovers from Waveshare's example project. Bluetooth is never used and
+# LVGL's demo apps only cost build time and flash. The FPS/CPU overlay sits on
+# top of the odometer: turn it back on in menuconfig to measure.
+# CONFIG_BT_ENABLED is not set
+# CONFIG_LV_USE_DEMO_WIDGETS is not set
+# CONFIG_LV_USE_DEMO_KEYPAD_AND_ENCODER is not set
+# CONFIG_LV_USE_DEMO_BENCHMARK is not set
+# CONFIG_LV_USE_DEMO_STRESS is not set
+# CONFIG_LV_USE_DEMO_MUSIC is not set
+# CONFIG_LV_USE_PERF_MONITOR is not set
