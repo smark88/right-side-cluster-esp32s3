@@ -60,11 +60,12 @@ menu "Dash (7in)"
 
     config DASH_DEMO_EXERCISE_WARNINGS
         bool "Demo: walk each tile past its warning limit in turn"
-        depends on DASH_MODE_DEMO
         default y
         help
-            So the warning flashes and the full-screen alert can be checked on
-            the bench. Off, the demo only ever shows healthy values.
+            In the bench Demo build and in demo switched on from the Settings
+            page: each tile is taken past its warning limit in turn, so the
+            red flash and the full-screen alert can be seen. Off, the demo
+            only ever shows healthy values.
 
     config DASH_OBD_DEBUG
         bool "Log every OBD reply"

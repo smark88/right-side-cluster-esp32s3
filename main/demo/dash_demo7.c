@@ -32,7 +32,8 @@ void dash_demo7_sample(dash7_values_t *o)
     o->trans_f    = 100.0f + warm * 80.0f  + wob;
     o->iat_f      = 90.0f  + warm * 50.0f  + wob;
     o->oil_psi    = 25.0f + load * 45.0f;
-    o->boost_psi  = -8.0f + load * 18.0f;
+    // Peaks at +12, past the 11 psi amber point, so that colour shows too.
+    o->boost_psi  = -8.0f + load * 20.0f;
     o->iat2_f     = o->iat_f + 15.0f + load * 40.0f;
     o->knock_deg  = load > 0.85f ? (load - 0.85f) * 20.0f : 0.0f;
 
