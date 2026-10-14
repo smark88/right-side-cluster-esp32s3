@@ -10,3 +10,8 @@
 // only from lv_timer callbacks, which run inside that task.
 void lvgl7_init(esp_lcd_panel_handle_t panel);
 void lvgl7_start(void);
+
+// Small FPS / CPU readout in the top-right corner, above the shift dots, on
+// every page. Built hidden by lvgl7_init; show it from LVGL's task (an
+// lv_timer), e.g. while demo mode is on. CPU is LVGL's own core.
+void lvgl7_perf_show(bool on);

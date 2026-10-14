@@ -25,6 +25,34 @@ static const char *TAG = "LVGL7";
 static lv_disp_draw_buf_t s_draw_buf;
 static lv_disp_drv_t      s_disp_drv;
 
+// Frames LVGL actually rendered, for the FPS readout.
+static volatile uint32_t s_frames;
+static lv_obj_t         *s_perf;
+static bool              s_perf_on;
+
+static void monitor_cb(lv_disp_drv_t *drv, uint32_t time_ms, uint32_t px)
+{
+    s_frames++;
+}
+
+static void perf_cb(lv_timer_t *t)
+{
+    static uint32_t last;
+    uint32_t f = s_frames, fps = f - last;
+    last = f;
+    if (!s_perf_on) return;
+    lv_label_set_text_fmt(s_perf, "%u FPS   %u%% CPU", (unsigned)fps,
+                          (unsigned)(100 - lv_timer_get_idle()));
+}
+
+void lvgl7_perf_show(bool on)
+{
+    if (on == s_perf_on || !s_perf) return;
+    s_perf_on = on;
+    if (on) lv_obj_clear_flag(s_perf, LV_OBJ_FLAG_HIDDEN);
+    else    lv_obj_add_flag(s_perf, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *a, lv_color_t *px)
 {
     esp_lcd_panel_handle_t panel = drv->user_data;
@@ -71,7 +99,18 @@ void lvgl7_init(esp_lcd_panel_handle_t panel)
     s_disp_drv.flush_cb  = flush_cb;
     s_disp_drv.draw_buf  = &s_draw_buf;
     s_disp_drv.user_data = panel;
+    s_disp_drv.monitor_cb = monitor_cb;
     lv_disp_drv_register(&s_disp_drv);
+
+    // On the system layer so it sits over every page; 14 px tall at y 1,
+    // clear of the shift dots that start at y 17.
+    s_perf = lv_label_create(lv_layer_sys());
+    lv_label_set_text(s_perf, "");
+    lv_obj_set_style_text_font(s_perf, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(s_perf, lv_color_hex(0x8A9099), 0);
+    lv_obj_align(s_perf, LV_ALIGN_TOP_RIGHT, -26, 1);
+    lv_obj_add_flag(s_perf, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_create(perf_cb, 1000, NULL);
 
     const esp_timer_create_args_t t = { .callback = tick_cb, .name = "lv_tick" };
     esp_timer_handle_t h;

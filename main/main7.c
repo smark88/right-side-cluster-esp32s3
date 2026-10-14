@@ -85,6 +85,7 @@ static void __attribute__((unused)) update_cb(lv_timer_t *t)
     if (demo) dash_demo7_sample(&v);
     else      fill_from_car(&v);
     v.demo = demo;
+    lvgl7_perf_show(demo);
 
     // Odometer: distance = mph * elapsed hours. Demo speed is not real
     // driving, so in demo mode it only displays the stored mileage.
